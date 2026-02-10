@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 st.set_page_config(
-    page_title="HTOM Case Operations Dashboard",
+    page_title="Bank Leumi Quarter 1 Dashboard",
     layout="wide"
 )
 
@@ -80,7 +80,7 @@ total_rma = filtered['RMA Count'].sum() if not filtered.empty else 0
 # -----------------------------
 # HEADER
 # -----------------------------
-st.title("📊 HTOM Expert Care Operations Dashboard")
+st.title("📊 Bank Leumi Quarter 1 Dashboard")
 
 # -----------------------------
 # KPI ROW
