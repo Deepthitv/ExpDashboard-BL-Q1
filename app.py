@@ -14,34 +14,15 @@ st.set_page_config(page_title="Bank Leumi FY26 Quarter_1 Dashboard", layout="wid
 # ------------------------------------------------
 st.markdown(f"""
 <style>
-    /* Global App Background */
     .stApp {{ background-color: #07182D; color: #FFFFFF; }}
-    
-    /* SIDEBAR: LIGHT THEME */
     section[data-testid="stSidebar"] {{ 
         background-color: #F0F2F6 !important; 
         border-right: 2px solid #9AC9E3;
     }}
-    
-    /* ELIMINATE RED HIGHLIGHTS (Dropdowns & Tags) */
     span[data-baseweb="tag"] {{
         background-color: #4F6A8F !important;
         color: white !important;
     }}
-    div[data-baseweb="select"] > div:focus-within {{
-        border-color: #16BDEB !important;
-    }}
-    li[role="option"][aria-selected="true"] {{
-        background-color: #9AC9E3 !important;
-    }}
-
-    /* Sidebar Labels */
-    section[data-testid="stSidebar"] label {{
-        color: #1A2C44 !important;
-        font-weight: 600 !important;
-    }}
-
-    /* METRIC CARDS: Forced Lighter Background (#1A2C44) */
     .metric-card {{
         background-color: #1A2C44 !important; 
         padding: 20px; 
@@ -52,8 +33,6 @@ st.markdown(f"""
     }}
     .metric-card h4 {{ color: #9AC9E3 !important; margin: 0; font-size: 14px; }}
     .metric-card h2 {{ color: #FFFFFF !important; margin: 5px 0 0 0; font-size: 28px; }}
-
-    /* INSIGHT BOX: Forced Lighter Background (#1A2C44) */
     .insight-box {{
         background-color: #1A2C44 !important; 
         border-left: 5px solid #EBC351;
@@ -61,11 +40,7 @@ st.markdown(f"""
         border-radius: 5px; 
         margin-top: 20px;
     }}
-
-    /* TITLES: Gold (#EBC351) */
     h1, h2, h3 {{ color: #EBC351 !important; font-weight: bold !important; }}
-
-    /* RAW DATA TABLE: Explicit White Font & Dark Background */
     [data-testid="stTable"] {{
         background-color: #07182D !important;
         color: #FFFFFF !important;
@@ -74,13 +49,6 @@ st.markdown(f"""
         color: #EBC351 !important; 
         background-color: #1A2C44 !important;
     }}
-    [data-testid="stTable"] tbody tr td {{
-        color: #FFFFFF !important;
-        background-color: #07182D !important;
-        border-bottom: 1px solid #4F6A8F !important;
-    }}
-
-    /* PDF BUTTON STYLING */
     .stButton>button {{
         background-color: #4F6A8F !important;
         color: white !important;
@@ -90,22 +58,24 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------
-# DATA HANDLING (With Unicode Fix & Month Bucketing)
+# DATA HANDLING (With Header Cleaning & Unicode Fix)
 # ------------------------------------------------
 @st.cache_data
 def load_data():
     if not os.path.exists("cases.csv"):
         return pd.DataFrame()
     
-    # ENCODING FIX: Added latin1 to handle special characters (Unicode Error fix)
     try:
         raw_df = pd.read_csv("cases.csv", encoding='latin1')
     except:
         raw_df = pd.read_csv("cases.csv", encoding='cp1252')
     
-    # 1. Bucket by Month using 'Opened Date'
+    # NEW FIX: Remove hidden spaces from column names to prevent KeyErrors
+    raw_df.columns = raw_df.columns.str.strip()
+    
+    # 1. Bucket by Month
     raw_df['Opened Date'] = pd.to_datetime(raw_df['Opened Date'], errors='coerce')
-    raw_df = raw_df.dropna(subset=['Opened Date']) # Remove rows with invalid dates
+    raw_df = raw_df.dropna(subset=['Opened Date'])
     
     raw_df['Month_Sort'] = raw_df['Opened Date'].dt.to_period('M') 
     raw_df['Month'] = raw_df['Opened Date'].dt.strftime('%b\'%y')
@@ -115,10 +85,17 @@ def load_data():
     raw_df['MTTC_Val'] = pd.to_numeric(raw_df['Final Resolution Time (Days)'], errors='coerce').fillna(0)
     raw_df['IST_Val'] = pd.to_numeric(raw_df['IST Hours'], errors='coerce').fillna(0)
     raw_df['P1P2_Val'] = raw_df['Priority - Current (Text)'].apply(lambda x: 1 if str(x) in ['1', '2'] else 0)
-    raw_df['Is_Proactive'] = raw_df['ContractTitle'].str.contains('ProActive', case=False, na=False).astype(int)
     
+    # Safe check for 'ContractTitle'
+    if 'ContractTitle' in raw_df.columns:
+        raw_df['Is_Proactive'] = raw_df['ContractTitle'].str.contains('ProActive', case=False, na=False).astype(int)
+    else:
+        raw_df['Is_Proactive'] = 0
+
     # 3. Group by Month and Technology
-    df = raw_df.groupby(['Month', 'Month_Sort', 'Technology']).agg({
+    tech_col = 'Technology' if 'Technology' in raw_df.columns else raw_df.columns[0]
+    
+    df = raw_df.groupby(['Month', 'Month_Sort', tech_col]).agg({
         'SR_Count': 'sum',
         'P1P2_Val': 'sum',
         'IST_Val': 'mean',
@@ -227,4 +204,4 @@ if not df.empty:
     with in2:
         st.markdown(f'<div class="insight-box"><h4>Efficiency Growth</h4><p>Avg MTTC is <b>{round(filtered["MTTC"].mean(), 1)} days</b>. Trends are within health targets.</p></div>', unsafe_allow_html=True)
 else:
-    st.error("Could not load data. Check if 'cases.csv' is present and formatted correctly.")
+    st.error("Column mismatch or missing file. Please check 'cases.csv' headers.")
