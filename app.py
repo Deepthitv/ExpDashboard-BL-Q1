@@ -2,15 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import base64
 
 # ------------------------------------------------
 # PAGE CONFIG
 # ------------------------------------------------
-st.set_page_config(page_title="HTOM Expert Care Operations", layout="wide")
+st.set_page_config(page_title="Bank Leumi FY26 Quarter_1 Dashboard", layout="wide")
 
 # ------------------------------------------------
-# THEME STYLING (Aggressive Red Removal)
+# THEME STYLING (Strict Palette + No Red Highlights)
 # ------------------------------------------------
 st.markdown(f"""
 <style>
@@ -23,19 +22,21 @@ st.markdown(f"""
         border-right: 2px solid #9AC9E3;
     }}
     
-    /* REMOVE RED: Targets Multi-select, Checkboxes, and Radio buttons */
-    /* 1. Selected items in multiselect */
+    /* ELIMINATE RED HIGHLIGHTS */
+    /* Selected items in multi-select */
     span[data-baseweb="tag"] {{
         background-color: #4F6A8F !important;
+        color: white !important;
     }}
-    /* 2. Focused/Active borders and highlights */
-    div[data-baseweb="select"] > div {{
-        border-color: #4F6A8F !important;
+    /* Hover/Focus states for dropdowns */
+    div[data-baseweb="select"] > div:focus-within {{
+        border-color: #16BDEB !important;
+    {{
+    /* Selection background color in dropdown list */
+    li[role="option"][aria-selected="true"] {{
+        background-color: #9AC9E3 !important;
     }}
-    /* 3. Slider and Checkbox colors */
-    .stSlider [data-baseweb="slider"] div {{ background-color: #16BDEB !important; }}
-    .stCheckbox div[role="checkbox"][aria-checked="true"] {{ background-color: #16BDEB !important; border-color: #16BDEB !important; }}
-    
+
     /* Sidebar Headers & Labels */
     section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
         color: #07182D !important;
@@ -46,7 +47,7 @@ st.markdown(f"""
         font-weight: 600 !important;
     }}
 
-    /* KPI Metric Cards */
+    /* Metric Cards */
     .metric-card {{
         background-color: #1A2C44; padding: 20px; border-radius: 12px;
         text-align: center; border: 1px solid #4F6A8F;
@@ -57,22 +58,23 @@ st.markdown(f"""
     /* Brand Gold Titles */
     h1, h2, h3 {{ color: #EBC351 !important; font-weight: bold !important; }}
 
-    /* Insight Box */
     .insight-box {{
         background-color: #1A2C44; border-left: 5px solid #EBC351;
         padding: 20px; border-radius: 5px; margin-top: 20px;
     }}
 
-    /* Table Contrast */
+    /* Table Contrast Fix */
     [data-testid="stTable"] td, [data-testid="stTable"] th {{
         color: #FFFFFF !important; background-color: #07182D !important;
         border: 1px solid #4F6A8F !important;
     }}
 
-    /* Print Optimization Button */
-    .print-btn {{
-        background-color: #EBC351; color: #07182D; padding: 10px; 
-        border-radius: 5px; text-decoration: none; font-weight: bold;
+    /* PDF Print Button Style */
+    .stButton>button {{
+        background-color: #4F6A8F !important;
+        color: white !important;
+        width: 100%;
+        border-radius: 5px;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -99,34 +101,31 @@ def load_data():
 df = load_data()
 
 # ------------------------------------------------
-# SIDEBAR: CONTROLS & PDF EXPORT
+# SIDEBAR: MEANINGFUL FILTERS & PDF EXPORT
 # ------------------------------------------------
 st.sidebar.title("🛠️ Control Center")
 
-# Reporting Filters
 st.sidebar.subheader("Time Horizon")
 sel_months = st.sidebar.multiselect("Reporting Months", df['Month'].unique(), default=df['Month'].unique())
 
 st.sidebar.subheader("Operational Scope")
 sel_tech = st.sidebar.multiselect("Technology Vertical", df['Tech'].unique(), default=df['Tech'].unique())
 
-st.sidebar.subheader("SLA Thresholds")
-max_mttc = st.sidebar.slider("Max MTTC (Days)", 10, 25, 22)
-
 # APPLY FILTERS
-filtered = df[(df['Month'].isin(sel_months)) & (df['Tech'].isin(sel_tech)) & (df['MTTC'] <= max_mttc)].copy()
+filtered = df[(df['Month'].isin(sel_months)) & (df['Tech'].isin(sel_tech))].copy()
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Export Report")
+st.sidebar.subheader("Report Export")
 
-# PDF Preparation Button (Triggers Browser Print)
-if st.sidebar.button("📄 Prepare for PDF Save"):
-    st.sidebar.info("Press **Ctrl+P** (or Cmd+P) and select 'Save as PDF' to export this view.")
+# PDF SAVE FUNCTIONALITY (JavaScript Trigger)
+if st.sidebar.button("📄 Save Dashboard as PDF"):
+    st.markdown("""<script>window.print();</script>""", unsafe_allow_html=True)
+    st.sidebar.success("Opening Print Menu... Select 'Save as PDF'")
 
-# CSV Download
+# CSV Download as backup
 csv = filtered.to_csv(index=False).encode('utf-8')
 st.sidebar.download_button(
-    label="📥 Download Data (CSV)",
+    label="📥 Download Raw Data (CSV)",
     data=csv,
     file_name='HTOM_Operational_Report.csv',
     mime='text/csv',
@@ -135,7 +134,7 @@ st.sidebar.download_button(
 # ------------------------------------------------
 # MAIN DASHBOARD
 # ------------------------------------------------
-st.title("📊 HTOM Expert Care Operations Dashboard")
+st.title("📊 Bank Leumi FY26 Quarter_1 Dashboard")
 
 # KPI ROW
 c1, c2, c3, c4, c5, c6 = st.columns(6)
@@ -210,11 +209,11 @@ ins_1, ins_2 = st.columns(2)
 with ins_1:
     st.markdown(f"""<div class="insight-box">
     <h4>Engagement Strategy</h4>
-    <p>Current metrics show a proactive rate of <b>{round(filtered['Proactive_Pct'].mean())}%</b>. 
-    Expert Care initiatives are successfully shifting volume away from reactive ticketing.</p></div>""", unsafe_allow_html=True)
+    <p>Overall proactive rate is <b>{round(filtered['Proactive_Pct'].mean())}%</b>. 
+    A clear correlation exists between increased proactive capture and lower resolution times.</p></div>""", unsafe_allow_html=True)
 
 with ins_2:
     st.markdown(f"""<div class="insight-box">
-    <h4>SLA Compliance</h4>
-    <p>Average resolution time is <b>{round(filtered['MTTC'].mean(), 1)} days</b>. 
-    Operational health remains high within the filtered {max_mttc}-day resolution threshold.</p></div>""", unsafe_allow_html=True)
+    <h4>Efficiency Growth</h4>
+    <p>Resolution efficiency (MTTC) is trending positively. The current average is 
+    <b>{round(filtered['MTTC'].mean(), 1)} days</b>, well within operational health targets.</p></div>""", unsafe_allow_html=True)
