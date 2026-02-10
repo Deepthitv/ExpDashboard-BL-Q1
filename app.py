@@ -10,7 +10,7 @@ import os
 st.set_page_config(page_title="Bank Leumi FY26 Quarter_1 Dashboard", layout="wide")
 
 # ------------------------------------------------
-# THEME STYLING
+# THEME STYLING (Preserved)
 # ------------------------------------------------
 st.markdown(f"""
 <style>
@@ -58,7 +58,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------
-# DATA HANDLING (With Header Cleaning & Unicode Fix)
+# DATA HANDLING
 # ------------------------------------------------
 @st.cache_data
 def load_data():
@@ -70,23 +70,20 @@ def load_data():
     except:
         raw_df = pd.read_csv("cases.csv", encoding='cp1252')
     
-    # NEW FIX: Remove hidden spaces from column names to prevent KeyErrors
     raw_df.columns = raw_df.columns.str.strip()
     
     # 1. Bucket by Month
     raw_df['Opened Date'] = pd.to_datetime(raw_df['Opened Date'], errors='coerce')
     raw_df = raw_df.dropna(subset=['Opened Date'])
-    
     raw_df['Month_Sort'] = raw_df['Opened Date'].dt.to_period('M') 
     raw_df['Month'] = raw_df['Opened Date'].dt.strftime('%b\'%y')
     
-    # 2. Extract Key Metrics
+    # 2. Extract Metrics
     raw_df['SR_Count'] = 1
     raw_df['MTTC_Val'] = pd.to_numeric(raw_df['Final Resolution Time (Days)'], errors='coerce').fillna(0)
     raw_df['IST_Val'] = pd.to_numeric(raw_df['IST Hours'], errors='coerce').fillna(0)
     raw_df['P1P2_Val'] = raw_df['Priority - Current (Text)'].apply(lambda x: 1 if str(x) in ['1', '2'] else 0)
     
-    # Safe check for 'ContractTitle'
     if 'ContractTitle' in raw_df.columns:
         raw_df['Is_Proactive'] = raw_df['ContractTitle'].str.contains('ProActive', case=False, na=False).astype(int)
     else:
@@ -103,11 +100,9 @@ def load_data():
         'Is_Proactive': 'sum'
     }).reset_index()
     
-    # 4. Rename to match app logic
     df.columns = ['Month', 'Month_Sort', 'Tech', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']
-    df = df.sort_values('Month_Sort').drop(columns=['Month_Sort'])
+    df = df.sort_values('Month_Sort') # Keep sorting column for internal use
     
-    # 5. Final Dashboard Calculations
     df['Reactive'] = df['SR'] - df['Proactive']
     df['Proactive_Pct'] = (df['Proactive'] / df['SR']) * 100
     df['Efficiency_Score'] = df['MTTC'].apply(lambda x: (1/x)*100 if x > 0 else 0)
@@ -157,12 +152,15 @@ if not df.empty:
     col_a, col_b = st.columns(2)
     with col_a:
         st.subheader("Monthly Engagement Share")
-        fig1 = px.bar(filtered, x="Month", y=["Proactive", "Reactive"], color_discrete_map={"Proactive": "#4F6A8F", "Reactive": "#9AC9E3"})
-        fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
+        # Aggregating by month to avoid duplicates in plotting
+        engagement_df = filtered.groupby('Month')[['Proactive', 'Reactive']].sum().reindex(filtered['Month'].unique())
+        fig1 = px.bar(engagement_df, x=engagement_df.index, y=["Proactive", "Reactive"], color_discrete_map={"Proactive": "#4F6A8F", "Reactive": "#9AC9E3"})
+        fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF", xaxis_title="")
         st.plotly_chart(fig1, use_container_width=True)
     with col_b:
         st.subheader("Efficiency Heatmap")
-        heat_df = filtered.set_index('Month')[['IST', 'MTTC']].T
+        # FIX: Ensure index is unique by averaging metrics per month for the heatmap
+        heat_df = filtered.groupby('Month')[['IST', 'MTTC']].mean().T
         fig2 = px.imshow(heat_df, color_continuous_scale=['#4F6A8F', '#9AC9E3', '#EBC351'])
         fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
         st.plotly_chart(fig2, use_container_width=True)
@@ -171,13 +169,15 @@ if not df.empty:
     col_c, col_d = st.columns(2)
     with col_c:
         st.subheader("MTTC Improvement Trend")
-        fig3 = px.line(filtered, x="Month", y="MTTC", markers=True, color_discrete_sequence=["#EBC351"])
-        fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
+        trend_df = filtered.groupby('Month')[['MTTC']].mean().reindex(filtered['Month'].unique())
+        fig3 = px.line(trend_df, x=trend_df.index, y="MTTC", markers=True, color_discrete_sequence=["#EBC351"])
+        fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF", xaxis_title="")
         st.plotly_chart(fig3, use_container_width=True)
     with col_d:
         st.subheader("Proactive Capture Trend")
-        fig4 = px.area(filtered, x="Month", y="Proactive_Pct", color_discrete_sequence=["#4F6A8F"])
-        fig4.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
+        pro_trend_df = filtered.groupby('Month')[['Proactive_Pct']].mean().reindex(filtered['Month'].unique())
+        fig4 = px.area(pro_trend_df, x=pro_trend_df.index, y="Proactive_Pct", color_discrete_sequence=["#4F6A8F"])
+        fig4.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF", xaxis_title="")
         st.plotly_chart(fig4, use_container_width=True)
 
     # PERFORMANCE LEDGER
@@ -190,11 +190,14 @@ if not df.empty:
     def apply_brand_colors(val):
         colors = {"Attention": "#4F6A8F", "Optimal": "#EBC351", "Stable": "#1A2C44"}
         return f'background-color: {colors.get(val, "#1A2C44")}; color: white; font-weight: bold'
-    st.dataframe(filtered[['Month', 'Status', 'SR', 'IST', 'MTTC', 'Proactive_Pct']].style.applymap(apply_brand_colors, subset=['Status']), use_container_width=True)
+    
+    # Cleaning up the ledger view
+    ledger_display = filtered[['Month', 'Tech', 'Status', 'SR', 'IST', 'MTTC', 'Proactive_Pct']].copy()
+    st.dataframe(ledger_display.style.applymap(apply_brand_colors, subset=['Status']), use_container_width=True)
 
     # INITIAL RAW DATA TABLE
     st.header("Initial Raw Data Table")
-    st.table(filtered[['Month', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']])
+    st.table(filtered[['Month', 'Tech', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']])
 
     # EXECUTIVE INSIGHTS
     st.header("Executive Insights")
