@@ -10,7 +10,7 @@ import os
 st.set_page_config(page_title="Bank Leumi FY26 Quarter_1 Dashboard", layout="wide")
 
 # ------------------------------------------------
-# THEME STYLING (Preserved)
+# THEME STYLING
 # ------------------------------------------------
 st.markdown(f"""
 <style>
@@ -41,14 +41,26 @@ st.markdown(f"""
         margin-top: 20px;
     }}
     h1, h2, h3 {{ color: #EBC351 !important; font-weight: bold !important; }}
+
+    /* RAW DATA TABLE: High Visibility Overrides */
     [data-testid="stTable"] {{
         background-color: #07182D !important;
-        color: #FFFFFF !important;
+        width: 100%;
     }}
     [data-testid="stTable"] thead tr th {{
-        color: #EBC351 !important; 
+        color: #EBC351 !important; /* Gold Header stays as requested */
         background-color: #1A2C44 !important;
+        font-size: 16px !important;
     }}
+    /* Fixed: Making cell data bold white and larger */
+    [data-testid="stTable"] tbody tr td {{
+        color: #FFFFFF !important; 
+        background-color: #07182D !important;
+        font-weight: 600 !important; /* Bold font weight */
+        font-size: 15px !important;   /* Increased size */
+        border-bottom: 1px solid #4F6A8F !important;
+    }}
+
     .stButton>button {{
         background-color: #4F6A8F !important;
         color: white !important;
@@ -71,14 +83,11 @@ def load_data():
         raw_df = pd.read_csv("cases.csv", encoding='cp1252')
     
     raw_df.columns = raw_df.columns.str.strip()
-    
-    # 1. Bucket by Month
     raw_df['Opened Date'] = pd.to_datetime(raw_df['Opened Date'], errors='coerce')
     raw_df = raw_df.dropna(subset=['Opened Date'])
     raw_df['Month_Sort'] = raw_df['Opened Date'].dt.to_period('M') 
     raw_df['Month'] = raw_df['Opened Date'].dt.strftime('%b\'%y')
     
-    # 2. Extract Metrics
     raw_df['SR_Count'] = 1
     raw_df['MTTC_Val'] = pd.to_numeric(raw_df['Final Resolution Time (Days)'], errors='coerce').fillna(0)
     raw_df['IST_Val'] = pd.to_numeric(raw_df['IST Hours'], errors='coerce').fillna(0)
@@ -89,7 +98,6 @@ def load_data():
     else:
         raw_df['Is_Proactive'] = 0
 
-    # 3. Group by Month and Technology
     tech_col = 'Technology' if 'Technology' in raw_df.columns else raw_df.columns[0]
     
     df = raw_df.groupby(['Month', 'Month_Sort', tech_col]).agg({
@@ -101,7 +109,7 @@ def load_data():
     }).reset_index()
     
     df.columns = ['Month', 'Month_Sort', 'Tech', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']
-    df = df.sort_values('Month_Sort') # Keep sorting column for internal use
+    df = df.sort_values('Month_Sort')
     
     df['Reactive'] = df['SR'] - df['Proactive']
     df['Proactive_Pct'] = (df['Proactive'] / df['SR']) * 100
@@ -152,14 +160,12 @@ if not df.empty:
     col_a, col_b = st.columns(2)
     with col_a:
         st.subheader("Monthly Engagement Share")
-        # Aggregating by month to avoid duplicates in plotting
         engagement_df = filtered.groupby('Month')[['Proactive', 'Reactive']].sum().reindex(filtered['Month'].unique())
         fig1 = px.bar(engagement_df, x=engagement_df.index, y=["Proactive", "Reactive"], color_discrete_map={"Proactive": "#4F6A8F", "Reactive": "#9AC9E3"})
         fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF", xaxis_title="")
         st.plotly_chart(fig1, use_container_width=True)
     with col_b:
         st.subheader("Efficiency Heatmap")
-        # FIX: Ensure index is unique by averaging metrics per month for the heatmap
         heat_df = filtered.groupby('Month')[['IST', 'MTTC']].mean().T
         fig2 = px.imshow(heat_df, color_continuous_scale=['#4F6A8F', '#9AC9E3', '#EBC351'])
         fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
@@ -191,7 +197,6 @@ if not df.empty:
         colors = {"Attention": "#4F6A8F", "Optimal": "#EBC351", "Stable": "#1A2C44"}
         return f'background-color: {colors.get(val, "#1A2C44")}; color: white; font-weight: bold'
     
-    # Cleaning up the ledger view
     ledger_display = filtered[['Month', 'Tech', 'Status', 'SR', 'IST', 'MTTC', 'Proactive_Pct']].copy()
     st.dataframe(ledger_display.style.applymap(apply_brand_colors, subset=['Status']), use_container_width=True)
 
@@ -207,4 +212,4 @@ if not df.empty:
     with in2:
         st.markdown(f'<div class="insight-box"><h4>Efficiency Growth</h4><p>Avg MTTC is <b>{round(filtered["MTTC"].mean(), 1)} days</b>. Trends are within health targets.</p></div>', unsafe_allow_html=True)
 else:
-    st.error("Column mismatch or missing file. Please check 'cases.csv' headers.")
+    st.error("No data found. Please ensure cases.csv is correct.")
