@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import base64
 
 # ------------------------------------------------
 # PAGE CONFIG
@@ -9,33 +10,36 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="HTOM Expert Care Operations", layout="wide")
 
 # ------------------------------------------------
-# THEME STYLING (Strict Palette + No Red)
+# THEME STYLING (Aggressive Red Removal)
 # ------------------------------------------------
 st.markdown(f"""
 <style>
     /* Global App Background */
     .stApp {{ background-color: #07182D; color: #FFFFFF; }}
     
-    /* SIDEBAR: LIGHT THEME & BRANDED FILTERS */
+    /* SIDEBAR: LIGHT THEME */
     section[data-testid="stSidebar"] {{ 
         background-color: #F0F2F6 !important; 
         border-right: 2px solid #9AC9E3;
     }}
     
-    /* Remove Red Highlight from Multi-select & Widgets */
-    section[data-testid="stSidebar"] .stMultiSelect div[role="listbox"] span {{
-        background-color: #4F6A8F !important; /* Brand Proactive Blue */
-        color: white !important;
+    /* REMOVE RED: Targets Multi-select, Checkboxes, and Radio buttons */
+    /* 1. Selected items in multiselect */
+    span[data-baseweb="tag"] {{
+        background-color: #4F6A8F !important;
     }}
-    
-    /* Change Slider/Checkbox/Radio highlights to Brand Cyan */
+    /* 2. Focused/Active borders and highlights */
+    div[data-baseweb="select"] > div {{
+        border-color: #4F6A8F !important;
+    }}
+    /* 3. Slider and Checkbox colors */
     .stSlider [data-baseweb="slider"] div {{ background-color: #16BDEB !important; }}
+    .stCheckbox div[role="checkbox"][aria-checked="true"] {{ background-color: #16BDEB !important; border-color: #16BDEB !important; }}
     
     /* Sidebar Headers & Labels */
     section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
         color: #07182D !important;
-        font-size: 1.2rem !important;
-        margin-bottom: 5px !important;
+        font-size: 1.1rem !important;
     }}
     section[data-testid="stSidebar"] label {{
         color: #1A2C44 !important;
@@ -53,15 +57,22 @@ st.markdown(f"""
     /* Brand Gold Titles */
     h1, h2, h3 {{ color: #EBC351 !important; font-weight: bold !important; }}
 
+    /* Insight Box */
     .insight-box {{
         background-color: #1A2C44; border-left: 5px solid #EBC351;
         padding: 20px; border-radius: 5px; margin-top: 20px;
     }}
 
-    /* Table Formatting */
+    /* Table Contrast */
     [data-testid="stTable"] td, [data-testid="stTable"] th {{
         color: #FFFFFF !important; background-color: #07182D !important;
         border: 1px solid #4F6A8F !important;
+    }}
+
+    /* Print Optimization Button */
+    .print-btn {{
+        background-color: #EBC351; color: #07182D; padding: 10px; 
+        border-radius: 5px; text-decoration: none; font-weight: bold;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -88,25 +99,38 @@ def load_data():
 df = load_data()
 
 # ------------------------------------------------
-# SIDEBAR: MEANINGFUL FILTERS
+# SIDEBAR: CONTROLS & PDF EXPORT
 # ------------------------------------------------
 st.sidebar.title("🛠️ Control Center")
 
+# Reporting Filters
 st.sidebar.subheader("Time Horizon")
-sel_months = st.sidebar.multiselect("Select Reporting Months", df['Month'].unique(), default=df['Month'].unique())
+sel_months = st.sidebar.multiselect("Reporting Months", df['Month'].unique(), default=df['Month'].unique())
 
 st.sidebar.subheader("Operational Scope")
 sel_tech = st.sidebar.multiselect("Technology Vertical", df['Tech'].unique(), default=df['Tech'].unique())
 
 st.sidebar.subheader("SLA Thresholds")
-max_mttc = st.sidebar.slider("Max MTTC (Days) Limit", 10, 25, 20)
+max_mttc = st.sidebar.slider("Max MTTC (Days)", 10, 25, 22)
 
-# Apply Filters
-filtered = df[
-    (df['Month'].isin(sel_months)) & 
-    (df['Tech'].isin(sel_tech)) & 
-    (df['MTTC'] <= max_mttc)
-].copy()
+# APPLY FILTERS
+filtered = df[(df['Month'].isin(sel_months)) & (df['Tech'].isin(sel_tech)) & (df['MTTC'] <= max_mttc)].copy()
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Export Report")
+
+# PDF Preparation Button (Triggers Browser Print)
+if st.sidebar.button("📄 Prepare for PDF Save"):
+    st.sidebar.info("Press **Ctrl+P** (or Cmd+P) and select 'Save as PDF' to export this view.")
+
+# CSV Download
+csv = filtered.to_csv(index=False).encode('utf-8')
+st.sidebar.download_button(
+    label="📥 Download Data (CSV)",
+    data=csv,
+    file_name='HTOM_Operational_Report.csv',
+    mime='text/csv',
+)
 
 # ------------------------------------------------
 # MAIN DASHBOARD
@@ -127,9 +151,7 @@ mk_card(c6, "Efficiency", round(filtered["Efficiency_Score"].mean(), 1))
 
 st.divider()
 
-# ------------------------------------------------
-# TRENDS & ANALYSIS
-# ------------------------------------------------
+# ANALYTICS & BOTTLENECKS
 st.header("Operational Metrics & Bottleneck Analysis")
 col_a, col_b = st.columns(2)
 
@@ -147,6 +169,7 @@ with col_b:
     fig_heat.update_layout(paper_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
     st.plotly_chart(fig_heat, use_container_width=True)
 
+# PERFORMANCE TRENDS
 st.header("Performance & Growth Trends")
 col_c, col_d = st.columns(2)
 
@@ -162,9 +185,7 @@ with col_d:
     fig_pct.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#FFFFFF")
     st.plotly_chart(fig_pct, use_container_width=True)
 
-# ------------------------------------------------
-# LEDGERS
-# ------------------------------------------------
+# PERFORMANCE LEDGER
 st.header("Detailed Performance Ledger")
 def brand_color_status(row):
     if row['MTTC'] > 18: return "Attention"
@@ -182,20 +203,18 @@ st.dataframe(filtered[['Month', 'Status', 'SR', 'IST', 'MTTC', 'Proactive_Pct']]
 st.header("Initial Raw Data Table")
 st.table(filtered[['Month', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']])
 
-# ------------------------------------------------
 # EXECUTIVE INSIGHTS
-# ------------------------------------------------
 st.header("Executive Insights")
 ins_1, ins_2 = st.columns(2)
 
 with ins_1:
     st.markdown(f"""<div class="insight-box">
     <h4>Engagement Strategy</h4>
-    <p>Filtered data shows a proactive rate of <b>{round(filtered['Proactive_Pct'].mean())}%</b>. 
-    Increasing the volume in <b>{sel_tech}</b> verticals is expected to improve overall resolution efficiency.</p></div>""", unsafe_allow_html=True)
+    <p>Current metrics show a proactive rate of <b>{round(filtered['Proactive_Pct'].mean())}%</b>. 
+    Expert Care initiatives are successfully shifting volume away from reactive ticketing.</p></div>""", unsafe_allow_html=True)
 
 with ins_2:
     st.markdown(f"""<div class="insight-box">
     <h4>SLA Compliance</h4>
-    <p>Average MTTC is currently <b>{round(filtered['MTTC'].mean(), 1)} days</b>. 
-    No severe bottlenecks are present within the current {max_mttc}-day filter threshold.</p></div>""", unsafe_allow_html=True)
+    <p>Average resolution time is <b>{round(filtered['MTTC'].mean(), 1)} days</b>. 
+    Operational health remains high within the filtered {max_mttc}-day resolution threshold.</p></div>""", unsafe_allow_html=True)
