@@ -10,7 +10,7 @@ import os
 st.set_page_config(page_title="Bank Leumi FY26 Quarter_1 Dashboard", layout="wide")
 
 # ------------------------------------------------
-# THEME STYLING (Preserved Exactly)
+# THEME STYLING
 # ------------------------------------------------
 st.markdown(f"""
 <style>
@@ -90,19 +90,24 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------
-# DATA HANDLING (Updated to Bucket Real CSV Data)
+# DATA HANDLING (With Unicode Fix & Month Bucketing)
 # ------------------------------------------------
 @st.cache_data
 def load_data():
     if not os.path.exists("cases.csv"):
         return pd.DataFrame()
     
-    # Load raw data
-    raw_df = pd.read_csv("cases.csv")
+    # ENCODING FIX: Added latin1 to handle special characters (Unicode Error fix)
+    try:
+        raw_df = pd.read_csv("cases.csv", encoding='latin1')
+    except:
+        raw_df = pd.read_csv("cases.csv", encoding='cp1252')
     
     # 1. Bucket by Month using 'Opened Date'
-    raw_df['Opened Date'] = pd.to_datetime(raw_df['Opened Date'])
-    raw_df['Month_Sort'] = raw_df['Opened Date'].dt.to_period('M') # For chronological sorting
+    raw_df['Opened Date'] = pd.to_datetime(raw_df['Opened Date'], errors='coerce')
+    raw_df = raw_df.dropna(subset=['Opened Date']) # Remove rows with invalid dates
+    
+    raw_df['Month_Sort'] = raw_df['Opened Date'].dt.to_period('M') 
     raw_df['Month'] = raw_df['Opened Date'].dt.strftime('%b\'%y')
     
     # 2. Extract Key Metrics
@@ -112,7 +117,7 @@ def load_data():
     raw_df['P1P2_Val'] = raw_df['Priority - Current (Text)'].apply(lambda x: 1 if str(x) in ['1', '2'] else 0)
     raw_df['Is_Proactive'] = raw_df['ContractTitle'].str.contains('ProActive', case=False, na=False).astype(int)
     
-    # 3. Group by Month and Technology to create the dashboard dataframe
+    # 3. Group by Month and Technology
     df = raw_df.groupby(['Month', 'Month_Sort', 'Technology']).agg({
         'SR_Count': 'sum',
         'P1P2_Val': 'sum',
@@ -121,10 +126,8 @@ def load_data():
         'Is_Proactive': 'sum'
     }).reset_index()
     
-    # 4. Rename columns to match existing app logic
+    # 4. Rename to match app logic
     df.columns = ['Month', 'Month_Sort', 'Tech', 'SR', 'P1/P2', 'IST', 'MTTC', 'Proactive']
-    
-    # Sort by date so trends look correct
     df = df.sort_values('Month_Sort').drop(columns=['Month_Sort'])
     
     # 5. Final Dashboard Calculations
@@ -224,4 +227,4 @@ if not df.empty:
     with in2:
         st.markdown(f'<div class="insight-box"><h4>Efficiency Growth</h4><p>Avg MTTC is <b>{round(filtered["MTTC"].mean(), 1)} days</b>. Trends are within health targets.</p></div>', unsafe_allow_html=True)
 else:
-    st.error("No data found. Please ensure 'cases.csv' is in your GitHub repository.")
+    st.error("Could not load data. Check if 'cases.csv' is present and formatted correctly.")
